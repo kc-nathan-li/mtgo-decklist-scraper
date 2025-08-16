@@ -10,6 +10,7 @@ import pandas as pd
 import requests
 from selenium import webdriver
 from selenium.common.exceptions import NoSuchElementException  # noqa: F401
+from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC  # noqa: F401
 from selenium.webdriver.support.wait import WebDriverWait  # noqa: F401
@@ -30,7 +31,6 @@ def bulkOracle():
     oracleJson = response2.json()
     oracleDf = pd.json_normalize(oracleJson)
     return oracleDf
-
 
 ## MTGO Decklists
 
@@ -60,7 +60,6 @@ class mtgoScrape:
         tournamentLists = [x for x in decklistSelects if format in x["href"]]
         tournInfoList = []
         for tag in tournamentLists:
-            print(tag)
             date_str = tag.select_one("time")["datetime"]
             date_obj = dt.datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%SZ")
             tournName = f"{date_obj.date()} {tag.select_one('h3').text.strip()}"
@@ -79,7 +78,12 @@ class mtgoScrape:
         Returns:
             _type_: Dictionary where the key is a deck, the value is a dictionary of size 2, with main board and side board.
         """
-        print(f"{url} not found. Getting decks from web-page {url}")
+        print(f"{url} not found. Getting decks from web-page https://www.mtgo.com{url}")
+        options = Options()
+        options.add_argument("--headless")
+        options.add_argument("--disable-gpu")
+        options.add_argument("--disable-extensions")
+        options.add_argument("--blink-settings=imagesEnabled=false")
         driver = webdriver.Chrome()
         driver.get(f"https://www.mtgo.com{url}")
         deckLen = len(driver.find_elements(By.CSS_SELECTOR, '[id*="Decklist"]'))
@@ -89,11 +93,12 @@ class mtgoScrape:
         deckDict = {}
         for i in range(deckLen):
             deckDict[f"Deck {i}"] = {'main':mainDecks[i], 'side': sideBoards[i]}
-        json.dump(deckDict, open(f"MTGO Decklists Scraped/{url.split("/")[2]}.json", 'w'))
+        if deckDict != {}:
+            json.dump(deckDict, open(f"MTGO Decklists Scraped/{url.split("/")[2]}.json", 'w'))
         return deckDict
     
     def getDecksFromUrlLoad(url:str):
-        print(f"Trying to load {url} from previously downloaded decklist.")
+        print(f"Trying to load {url} from previously downloaded  decklist.")
         return json.load(open(f"MTGO Decklists Scraped/{url.split("/")[2]}.json"))
 
     def getDecksFromUrl(url:str):
@@ -182,6 +187,14 @@ class mtgoScrape:
         return outDf
     
     def getDeckListsFromUrlList(listOfUrls:list):
+        """_summary_
+
+        Args:
+            listOfUrls (list): _description_
+
+        Returns:
+            DataFrame: DataFrame of all decks in urllist
+        """
         resultsLists = []
         for eachUrl in listOfUrls:
             tempDict = mtgoScrape.getDecksFromUrl(eachUrl)
@@ -194,12 +207,31 @@ class mtgoScrape:
         outDf = outDf.drop(columns=['index'])
         return outDf
 
+class dataAnalysis:
+    def __init__(self):
+        return
+    
+    def deckComparisonPrep(deck1, deck2):
+        deck1 = deck1.reset_index()
+        deck2 = deck2.reset_index()
+        merged = pd.merge(deck1, deck2, how='outer')
+        merged = merged.pivot(index='Card Name', columns=['Deck URL', 'Deck'], values='Quantity')
+        return merged
+
+    def getJaccard(deck1,deck2):
+        df = dataAnalysis.deckComparisonPrep(deck1, deck2)
+        df = df.fillna(0)
+        df['Union'] = df[[deckLists[0],deckLists[2]]].max(axis=1)
+        df['Intersect'] = df[[deckLists[0],deckLists[2]]].min(axis=1)
+        jaccardVal = df['Intersect'].sum() / df['Union'].sum()
+        return jaccardVal
+
 #print(mtgoScrape.getDeckListsFromUrlList(["/decklist/standard-challenge-32-2025-08-1512810049", "/decklist/standard-challenge-32-2025-08-1612810061"]))
 
 augOutput = mtgoScrape.formatDeckList('standard',2025,8)
 
-urlList = [x['url'] for x in augOutput]
+skipUrls = ["/decklist/standard-challenge-32-2025-08-0112806287", "/decklist/standard-league-2025-08-019495"]
+
+urlList = [x['url'] for x in augOutput if x['url'] not in skipUrls]
 
 print(mtgoScrape.getDeckListsFromUrlList(urlList))
-
-print(augOutput)

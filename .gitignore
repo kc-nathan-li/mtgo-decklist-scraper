@@ -1,2 +1,3 @@
-MTGA Decklists Scraped/
+/MTGA Decklists Scraped
 *.json
+/__pycache__
