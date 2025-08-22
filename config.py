@@ -84,6 +84,7 @@ mtgKeyToArchetypeDict = {
     "Heliod, Sun-Crowned": "Lifegain",
     "Nurturing Pixie": "Pixie",
     "Liliana of the Veil": "Midrange",
+    ### Standard Archetypes
     'Vivi Ornitier': "Vivi",
     'Abhorrent Oculus': "Oculus",
     'Kaito, Bane of Nightmares': "Kaito",

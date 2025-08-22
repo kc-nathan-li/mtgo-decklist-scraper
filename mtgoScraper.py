@@ -35,6 +35,7 @@ class oracle:
         oracleDf = oracle.bulk()
         oracleDf = oracleDf[~oracleDf['layout'].str.contains("art_series")]
         oracleDf = oracleDf[~oracleDf['layout'].str.contains("token")]
+        oracleDf = oracleDf[~oracleDf['set_type'].str.contains("funny")]
         oracleDf['name'] = oracleDf['name'].str.split(' // ').str[0]
         oracleDf['name'] = oracleDf['name'].str.split('/').str[0]
         return oracleDf
@@ -285,8 +286,9 @@ class identifyDeck:
                     return f"{deckCol} {eachCard}"
                 
     def enrichDataFrame(deckDf,oracleDf):
-        deckDf = deckDf.reset_index()
+        deckDf = deckDf.reset_index(drop=True)
         deckDf = pd.merge(deckDf,oracleDf[scryKeepCols], left_on='Card Name', right_on='name', how='left')
+        deckDf = deckDf.drop(columns=['name'])
         return deckDf
 
 class dataAnalysis:
