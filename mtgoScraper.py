@@ -15,6 +15,8 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC  # noqa: F401
 from selenium.webdriver.support.wait import WebDriverWait  # noqa: F401
 
+from config import standardKeyCardList, pioneerKeyCardList, scryKeepCols
+
 ## Temp variables, to add to interface after
 
 queryMonth = 8
@@ -23,14 +25,47 @@ queryFormat = "standard"
 
 
 ## Bulk Scryfall API
-def bulkOracle():
-    scryfallUrl = "https://api.scryfall.com/bulk-data"
-    response = requests.get(scryfallUrl)
-    bulkDataUrl = response.json()["data"][0]["download_uri"]
-    response2 = requests.get(bulkDataUrl)
-    oracleJson = response2.json()
-    oracleDf = pd.json_normalize(oracleJson)
-    return oracleDf
+
+class oracle:
+    def bulk():
+        scryfallUrl = "https://api.scryfall.com/bulk-data"
+        response = requests.get(scryfallUrl)
+        bulkDataUrl = response.json()["data"][0]["download_uri"]
+        response2 = requests.get(bulkDataUrl)
+        oracleJson = response2.json()
+        oracleDf = pd.json_normalize(oracleJson)
+        return oracleDf
+
+    def clean():
+        oracleDf = oracle.bulk()
+        oracleDf = oracleDf[~oracleDf['layout'].str.contains("art_series")]
+        oracleDf = oracleDf[~oracleDf['layout'].str.contains("token")]
+        oracleDf['name'] = oracleDf['name'].str.split(' // ').str[0]
+        oracleDf['name'] = oracleDf['name'].str.split('/').str[0]
+        return oracleDf
+
+    def expand_faces(row):
+        if isinstance(row.get('card_faces'), list):
+            front = row['card_faces'][0]
+            back = row['card_faces'][1] if len(row['card_faces']) > 1 else {}
+            row['mana_cost'] = front.get('mana_cost')
+            row['type_line'] = front.get('type_line')
+            row['oracle_text'] = front.get('oracle_text')
+            row['back_name'] = back.get('name')
+            x = back.get('type_line')
+            row['back_type_line'] = x
+            if "Creature" in x:
+                row['back_power'] = back.get('power')
+                row['back_toughness'] = back.get('toughness')
+            row['back_type_line'] = back.get('type_line')
+            row['back_oracle_text'] = back.get('oracle_text')
+        return row
+    
+    def expandedClean():
+        oracleDf = oracle.clean()
+        oracleDf['colors'] = oracleDf['colors'].fillna(oracleDf['color_identity'])
+        oracleDf = oracleDf.apply(oracle.expand_faces, axis=1)
+        return oracleDf
 
 ## MTGO Decklists
 
@@ -104,6 +139,7 @@ class mtgoScrape:
     def getDecksFromUrl(url:str):
         try:
             outDict = mtgoScrape.getDecksFromUrlLoad(url)
+            print(f"{url} load success.")
             return outDict
         except FileNotFoundError:
             outDict = mtgoScrape.getDecksFromUrlScrape(url)
@@ -200,17 +236,81 @@ class mtgoScrape:
             tempDict = mtgoScrape.getDecksFromUrl(eachUrl)
             tempDf = mtgoScrape.getDeckListsFromResults(tempDict)
             tempDf['Deck URL'] = eachUrl
-            print(tempDf)
             resultsLists += [tempDf]
         outDf = pd.concat(resultsLists).reset_index(drop=False)
         outDf = outDf.set_index(['Deck URL', 'Deck', 'Main/Side', 'Card Name'])
         outDf = outDf.drop(columns=['index'])
+        outDf = outDf.reset_index()
+        outDf['Card Name'] = outDf['Card Name'].str.split(' // ').str[0]
+        outDf['Card Name'] = outDf['Card Name'].str.split('/').str[0]
+        outDf = outDf.set_index(['Deck URL', 'Deck', 'Main/Side', 'Card Name'])
+        outDf = outDf.sort_index()
         return outDf
+    
+    def removeCardIndex(deckDf):
+        deckDf = deckDf.reset_index()
+        deckDf = deckDf.set_index(['Deck URL', 'Deck'])
+        deckDf = deckDf.sort_index()
+        return deckDf
+    
+    def setDecksToClasses(deckDf):
+        deckDf = mtgoScrape.removeCardIndex(deckDf)
+        deckDf = identifyDeck.enrichDataFrame(deckDf.reset_index(), oracle.expandedClean())
+        deckDf = deckDf.set_index(['Deck URL', 'Deck'])
+        decklists = list(deckDf.index.unique())
+        deckObjectList = []
+        for eachDeck in decklists:
+            tempDeckObj = Deck(deckDf.loc[eachDeck])
+            deckObjectList.append(tempDeckObj)
+        return deckObjectList
+    
+    def mtgoScrapeMain(listOfUrls:list):
+        deckDf = mtgoScrape.getDeckListsFromUrlList(listOfUrls)
+        return mtgoScrape.setDecksToClasses(deckDf)
+
+class identifyDeck:        
+    custom_order = ['W', 'U', 'B', 'R', 'G']
+    order_map = {color: i for i, color in enumerate(custom_order)}
+
+    def sort_colors(colors):
+        return sorted(colors, key=lambda x: identifyDeck.order_map.get(x, float('inf')))
+
+    def dedupe_preserve_order(seq):
+        seen = set()
+        return [x for x in seq if not (x in seen or seen.add(x))]
+
+    def getDeckColour(deckDf):
+        result = ''.join([c for sublist in deckDf['colors'] for c in sublist])
+        x = identifyDeck.sort_colors(identifyDeck.dedupe_preserve_order(result))
+        return ''.join(x)
+
+    def checkCardInDeck(cardName,deckDf):
+        if len(deckDf[deckDf['Card Name'] == cardName]) == 0:
+            return False
+        else:
+            return True
+        
+    def getDeckName(deckDf):
+        keyCardMapping = {'standard': standardKeyCardList,
+                          'pioneer': pioneerKeyCardList}
+        keyCards = keyCardMapping.get(queryFormat)
+        keyCard = ''
+        while keyCard == '':
+            for eachCard in keyCards:
+                if identifyDeck.checkCardInDeck(eachCard,deckDf):
+                    deckCol = identifyDeck.getDeckColour(deckDf)
+                    return f"{deckCol} {eachCard}"
+                
+    def enrichDataFrame(deckDf,oracleDf):
+        deckDf = deckDf.reset_index()
+        deckDf = pd.merge(deckDf,oracleDf[scryKeepCols], left_on='Card Name', right_on='name', how='left')
+        return deckDf
 
 class dataAnalysis:
+    @staticmethod
     def __init__(self):
         return
-    
+
     def deckComparisonPrep(deck1, deck2):
         deck1 = deck1.reset_index()
         deck2 = deck2.reset_index()
@@ -218,20 +318,75 @@ class dataAnalysis:
         merged = merged.pivot(index='Card Name', columns=['Deck URL', 'Deck'], values='Quantity')
         return merged
 
-    def getJaccard(deck1,deck2):
+    def expand_faces(row):
+        if isinstance(row.get('card_faces'), list):
+            front = row['card_faces'][0]
+            back = row['card_faces'][1] if len(row['card_faces']) > 1 else {}
+            row['mana_cost'] = front.get('mana_cost')
+            row['type_line'] = front.get('type_line')
+            row['oracle_text'] = front.get('oracle_text')
+            row['back_name'] = back.get('name')
+            x = back.get('type_line')
+            row['back_type_line'] = x
+            if "Creature" in x:
+                #print(front.get('name'),back.get('name'))
+                row['back_power'] = back.get('power')
+                row['back_toughness'] = back.get('toughness')
+            row['back_type_line'] = back.get('type_line')
+            row['back_oracle_text'] = back.get('oracle_text')
+        return row
+
+    def getJaccardForPair(deck1id,deck2id,mainDf):
+        deck1 = mainDf.loc[deck1id].sort_index()
+        deck2 = mainDf.loc[deck2id].sort_index()
         df = dataAnalysis.deckComparisonPrep(deck1, deck2)
         df = df.fillna(0)
-        df['Union'] = df[[deckLists[0],deckLists[2]]].max(axis=1)
-        df['Intersect'] = df[[deckLists[0],deckLists[2]]].min(axis=1)
+        df['Union'] = df[[deck1id,deck2id]].max(axis=1)
+        df['Intersect'] = df[[deck1id,deck2id]].min(axis=1)
         jaccardVal = df['Intersect'].sum() / df['Union'].sum()
+        #print(deck1id, deck2id, jaccardVal)
         return jaccardVal
+
+    def getDeckLists(df):
+        return df.index.unique()
+
+    def jaccardMain(listOfUrls:list):
+        deckDf = mtgoScrape.getDeckListsFromUrlList(listOfUrls)
+        deckDf = mtgoScrape.removeCardIndex(deckDf)
+        decklist = dataAnalysis.getDeckLists(deckDf)
+        return decklist
 
 #print(mtgoScrape.getDeckListsFromUrlList(["/decklist/standard-challenge-32-2025-08-1512810049", "/decklist/standard-challenge-32-2025-08-1612810061"]))
 
-augOutput = mtgoScrape.formatDeckList('standard',2025,8)
+class Deck:
+    def __init__(self,deckDataFrame):
+        keyCardMapping = {'standard': standardKeyCardList,
+                          'pioneer': pioneerKeyCardList}
+        keyCards = keyCardMapping.get(queryFormat)
+        self.deckDf =  deckDataFrame
+        self.deckId = deckDataFrame.index.unique()[0]
+        self.colour = identifyDeck.getDeckColour(self.deckDf)
+        self.keyCard = [x for x in keyCards if x in list(self.deckDf['Card Name'])]
+        self.deckName = f"{self.colour} {self.keyCard[0]}"
+        return
 
-skipUrls = ["/decklist/standard-challenge-32-2025-08-0112806287", "/decklist/standard-league-2025-08-019495"]
+if __name__ == '__main__':
+    endDate = dt.datetime.today()
+    startDate = endDate - dt.timedelta(weeks=1)
 
-urlList = [x['url'] for x in augOutput if x['url'] not in skipUrls]
+    startMonth = dt.datetime(startDate.year, startDate.month, 1)
+    endMonth = dt.datetime(endDate.year, endDate.month, 1)
+    months = pd.date_range(start=startMonth, end=endMonth, freq='MS')
 
-print(mtgoScrape.getDeckListsFromUrlList(urlList))
+    startDate = dt.date(startDate.year, startDate.month, startDate.day)
+
+
+    rawDeckLists = []
+    for eachMonth in months:
+        rawDeckLists += mtgoScrape.formatDeckList(queryFormat,eachMonth.year,eachMonth.month)
+
+    skipUrls = []
+
+    urlList = [x['url'] for x in rawDeckLists if x['url'] not in skipUrls if x['date']>=startDate]
+
+    deckList = mtgoScrape.mtgoScrapeMain(urlList)
