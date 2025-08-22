@@ -15,16 +15,9 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC  # noqa: F401
 from selenium.webdriver.support.wait import WebDriverWait  # noqa: F401
 
-from config import standardKeyCardList, pioneerKeyCardList, scryKeepCols
+from config import standardKeyCardList, pioneerKeyCardList, scryKeepCols, queryFormat, mtgColourComboNameDict, mtgKeyToArchetypeDict
 
 import logging
-
-## Temp variables, to add to interface after
-
-queryMonth = 8
-queryYear = 2025
-queryFormat = "standard"
-
 
 ## Bulk Scryfall API
 
@@ -159,24 +152,12 @@ class mtgoScrape:
         outDict = {}
         deckString = deckString.split("\n")
         for eachLine in deckString:
-            if "Creature (" in eachLine:
+            if "(" in eachLine:
                 deckString.remove(eachLine)
-            elif "Enchantment (" in eachLine:
+            elif "Cards" in eachLine:
                 deckString.remove(eachLine)
-            elif "Artifact (" in eachLine:
-                deckString.remove(eachLine)
-            elif "Land (" in eachLine:
-                deckString.remove(eachLine)
-            elif "Instant (" in eachLine:
-                deckString.remove(eachLine)
-            elif "Sorcery (" in eachLine:
-                deckString.remove(eachLine)
-            elif " Cards" in eachLine:
-                deckString.remove(eachLine)
-            elif "Planeswalker (" in eachLine:
-                deckString.remove(eachLine)
-            elif "Other" in eachLine:
-                deckString.remove(eachLine)
+            else:
+                pass
         for eachLine in deckString:
             eachLineSplitUp = eachLine.split(" ")
             outDict[" ".join(eachLineSplitUp[1:])] = int(eachLineSplitUp[0])
@@ -358,14 +339,16 @@ class dataAnalysis:
 
 class Deck:
     def __init__(self,deckDataFrame):
+        print(deckDataFrame)
         keyCardMapping = {'standard': standardKeyCardList,
                           'pioneer': pioneerKeyCardList}
         keyCards = keyCardMapping.get(queryFormat)
         self.deckDf =  deckDataFrame
         self.deckId = deckDataFrame.index.unique()[0]
-        self.colour = identifyDeck.getDeckColour(self.deckDf)
+        self.colour = mtgColourComboNameDict[identifyDeck.getDeckColour(self.deckDf)]
         self.keyCard = [x for x in keyCards if x in list(self.deckDf['Card Name'])]
-        self.deckName = f"{self.colour} {self.keyCard[0]}"
+        self.archetype = mtgKeyToArchetypeDict[self.keyCard[0]]
+        self.deckName = f"{self.colour} {self.archetype}"
         return
 
 if __name__ == '__main__':
