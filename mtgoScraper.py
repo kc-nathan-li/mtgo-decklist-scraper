@@ -17,6 +17,8 @@ from selenium.webdriver.support.wait import WebDriverWait  # noqa: F401
 
 from config import standardKeyCardList, pioneerKeyCardList, scryKeepCols
 
+import logging
+
 ## Temp variables, to add to interface after
 
 queryMonth = 8
@@ -87,7 +89,7 @@ class mtgoScrape:
         Returns:
             _type_: List of dicts for each tournament, with a 'name', 'date', 'url list
         """
-        print(f"Searching for {format} deck lists, {year}-{month:02d}.")
+        logging.info(f"Searching for {format} deck lists, {year}-{month:02d}.")
         deckListUrl = f"https://www.mtgo.com/decklists/{year}/{month:02d}?filter={format.capitalize()}"
         reqGet = requests.get(deckListUrl)
         decklistPage = bs4.BeautifulSoup(reqGet.text, "html.parser")
@@ -113,7 +115,7 @@ class mtgoScrape:
         Returns:
             _type_: Dictionary where the key is a deck, the value is a dictionary of size 2, with main board and side board.
         """
-        print(f"{url} not found. Getting decks from web-page https://www.mtgo.com{url}")
+        logging.info(f"{url} not found. Getting decks from web-page https://www.mtgo.com{url}")
         options = Options()
         options.add_argument("--headless")
         options.add_argument("--disable-gpu")
@@ -133,13 +135,13 @@ class mtgoScrape:
         return deckDict
     
     def getDecksFromUrlLoad(url:str):
-        print(f"Trying to load {url} from previously downloaded  decklist.")
+        logging.info(f"Trying to load {url} from previously downloaded  decklist.")
         return json.load(open(f"MTGO Decklists Scraped/{url.split("/")[2]}.json"))
 
     def getDecksFromUrl(url:str):
         try:
             outDict = mtgoScrape.getDecksFromUrlLoad(url)
-            print(f"{url} load success.")
+            logging.info(f"{url} load success.")
             return outDict
         except FileNotFoundError:
             outDict = mtgoScrape.getDecksFromUrlScrape(url)
@@ -329,7 +331,6 @@ class dataAnalysis:
             x = back.get('type_line')
             row['back_type_line'] = x
             if "Creature" in x:
-                #print(front.get('name'),back.get('name'))
                 row['back_power'] = back.get('power')
                 row['back_toughness'] = back.get('toughness')
             row['back_type_line'] = back.get('type_line')
@@ -344,7 +345,6 @@ class dataAnalysis:
         df['Union'] = df[[deck1id,deck2id]].max(axis=1)
         df['Intersect'] = df[[deck1id,deck2id]].min(axis=1)
         jaccardVal = df['Intersect'].sum() / df['Union'].sum()
-        #print(deck1id, deck2id, jaccardVal)
         return jaccardVal
 
     def getDeckLists(df):
@@ -355,8 +355,6 @@ class dataAnalysis:
         deckDf = mtgoScrape.removeCardIndex(deckDf)
         decklist = dataAnalysis.getDeckLists(deckDf)
         return decklist
-
-#print(mtgoScrape.getDeckListsFromUrlList(["/decklist/standard-challenge-32-2025-08-1512810049", "/decklist/standard-challenge-32-2025-08-1612810061"]))
 
 class Deck:
     def __init__(self,deckDataFrame):
