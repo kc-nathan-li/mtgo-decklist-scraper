@@ -339,7 +339,6 @@ class dataAnalysis:
 
 class Deck:
     def __init__(self,deckDataFrame):
-        print(deckDataFrame)
         keyCardMapping = {'standard': standardKeyCardList,
                           'pioneer': pioneerKeyCardList}
         keyCards = keyCardMapping.get(queryFormat)
