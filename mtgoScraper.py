@@ -397,6 +397,18 @@ class Queries:
             ascending=False
         ) / len(filteredDecks)
         return df
+    
+    def aggArchetype(decks, archetypeName, mainSide):
+        filteredDecks = [
+            deck.deckDf[deck.deckDf["Main/Side"] == mainSide]
+            for deck in decks
+            if deck.deckName == archetypeName
+        ]
+        df = pd.concat(filteredDecks)
+        tempDf = df.reset_index()
+        tempDf = tempDf.groupby("Card Name")["Quantity"].sum().sort_values(
+            ascending=False)
+        return df
 
     def filterDecksWithCard(
         decks, includedCards, mainSide1, excludedCards, mainSide2, mainSide
@@ -429,6 +441,22 @@ class Queries:
         )
         return df
 
+    def aggDecksWithCard(
+        decks, includedCards, mainSide1, excludedCards, mainSide2, mainSide
+    ):
+        filteredDecks = [
+            deck.deckDf[deck.deckDf["Main/Side"] == mainSide]
+            for deck in decks
+            if all(card in deck.uniqueCards[mainSide1] for card in includedCards)
+            if not any(card in deck.uniqueCards[mainSide2] for card in excludedCards)
+        ]
+        df = pd.concat(filteredDecks)
+        df = df.reset_index()
+        df = round(
+            df.groupby("Card Name")["Quantity"].sum().sort_values(ascending=False),
+            2,
+        )
+        return df
 
 class Deck:
     def __init__(self, deckDataFrame, qf):  # qf = Query Format
@@ -449,7 +477,7 @@ class Deck:
         }
         self.deckId = deckDataFrame.index.unique()[0]
         self.colour = mtgColourComboNameDict[identifyDeck.getDeckColour(self.deckDf)]
-        self.keyCard = [x for x in keyCards if x in list(self.deckDf["Card Name"])]
+        self.keyCard = [x for x in keyCards if x in self.uniqueCards['Main']]
         self.landcount = int(
             deckDataFrame[deckDataFrame["type_line"].str.contains("Land")][
                 "Quantity"
