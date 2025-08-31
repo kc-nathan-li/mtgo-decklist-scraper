@@ -475,7 +475,6 @@ class Deck:
         keyCards = keyCardMapping.get(qf)
         deckDataFrame = deckDataFrame.sort_values(by="Quantity", ascending=False)
         self.deckDf = deckDataFrame
-        print(deckDataFrame)
         self.uniqueCards = {
             "Main": list(
                 deckDataFrame[deckDataFrame["Main/Side"] == "Main"]["Card Name"]
