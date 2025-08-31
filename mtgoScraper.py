@@ -2,6 +2,8 @@
 
 import datetime as dt
 import json
+import logging
+import os
 import re  # noqa: F401
 
 import bs4
@@ -16,14 +18,14 @@ from selenium.webdriver.support import expected_conditions as EC  # noqa: F401
 from selenium.webdriver.support.wait import WebDriverWait  # noqa: F401
 
 from config import (
-    standardKeyCardList,
-    pioneerKeyCardList,
-    scryKeepCols,
     mtgColourComboNameDict,
     mtgKeyToArchetypeDict,
+    pioneerKeyCardList,
+    scryKeepCols,
+    standardKeyCardList,
+    pauperKeyCardList,
+    modernKeyCardList
 )
-
-import logging
 
 ## Bulk Scryfall API
 
@@ -42,7 +44,12 @@ class oracle:
         oracleDf = oracle.bulk()
         oracleDf = oracleDf[~oracleDf["layout"].str.contains("art_series")]
         oracleDf = oracleDf[~oracleDf["layout"].str.contains("token")]
-        oracleDf = oracleDf[~oracleDf["set_type"].str.contains("funny")]
+        oracleDf = oracleDf[
+            ~(
+                oracleDf["set_type"].str.contains("funny") &
+                oracleDf["name"] == "Pick Your Poison"
+            )
+        ]
         oracleDf["name"] = oracleDf["name"].str.split(" // ").str[0]
         oracleDf["name"] = oracleDf["name"].str.split("/").str[0]
         return oracleDf
@@ -152,16 +159,13 @@ class mtgoScrape:
             )
         return deckDict
 
-    def getDecksFromUrlLoad(url: str):
-        logging.info(f"Trying to load {url} from previously downloaded  decklist.")
-        return json.load(open(f"MTGO Decklists Scraped/{url.split('/')[2]}.json"))
-
     def getDecksFromUrl(url: str):
-        try:
-            outDict = mtgoScrape.getDecksFromUrlLoad(url)
-            logging.info(f"{url} load success.")
-            return outDict
-        except FileNotFoundError:
+        filename = f"MTGO Decklists Scraped/{url.split('/')[2]}.json"
+        if os.path.exists(filename):
+            with open(filename, "r") as f:
+                return json.load(f)
+        else:
+            logging.warning(f"File not found: {filename}")
             outDict = mtgoScrape.getDecksFromUrlScrape(url)
             return outDict
 
@@ -397,7 +401,7 @@ class Queries:
             ascending=False
         ) / len(filteredDecks)
         return df
-    
+
     def aggArchetype(decks, archetypeName, mainSide):
         filteredDecks = [
             deck.deckDf[deck.deckDf["Main/Side"] == mainSide]
@@ -406,8 +410,9 @@ class Queries:
         ]
         df = pd.concat(filteredDecks)
         tempDf = df.reset_index()
-        tempDf = tempDf.groupby("Card Name")["Quantity"].sum().sort_values(
-            ascending=False)
+        tempDf = (
+            tempDf.groupby("Card Name")["Quantity"].sum().sort_values(ascending=False)
+        )
         return df
 
     def filterDecksWithCard(
@@ -458,15 +463,19 @@ class Queries:
         )
         return df
 
+
 class Deck:
     def __init__(self, deckDataFrame, qf):  # qf = Query Format
         keyCardMapping = {
             "standard": standardKeyCardList,
             "pioneer": pioneerKeyCardList,
+            "pauper": pauperKeyCardList,
+            "modern": modernKeyCardList
         }
         keyCards = keyCardMapping.get(qf)
         deckDataFrame = deckDataFrame.sort_values(by="Quantity", ascending=False)
         self.deckDf = deckDataFrame
+        print(deckDataFrame)
         self.uniqueCards = {
             "Main": list(
                 deckDataFrame[deckDataFrame["Main/Side"] == "Main"]["Card Name"]
@@ -477,7 +486,7 @@ class Deck:
         }
         self.deckId = deckDataFrame.index.unique()[0]
         self.colour = mtgColourComboNameDict[identifyDeck.getDeckColour(self.deckDf)]
-        self.keyCard = [x for x in keyCards if x in self.uniqueCards['Main']]
+        self.keyCard = [x for x in keyCards if x in self.uniqueCards["Main"]]
         self.landcount = int(
             deckDataFrame[deckDataFrame["type_line"].str.contains("Land")][
                 "Quantity"

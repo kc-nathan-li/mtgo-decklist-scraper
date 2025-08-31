@@ -73,6 +73,14 @@ pioneerKeyCardList = [
     "Collected Company",
 ]
 
+modernKeyCardList = [
+
+]
+
+pauperKeyCardList = [
+    
+]
+
 mtgKeyToArchetypeDict = {
     "Agatha's Soul Cauldron": "Cauldron",
     "Emberheart Challenger": "Mice",
