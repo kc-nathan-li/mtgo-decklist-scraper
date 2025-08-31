@@ -73,13 +73,13 @@ pioneerKeyCardList = [
     "Collected Company",
 ]
 
-modernKeyCardList = [
-
-]
-
 pauperKeyCardList = [
     "Gladecover Scout",
     "Tolarian Terror"
+]
+
+modernKeyCardList = [
+
 ]
 
 mtgKeyToArchetypeDict = {
@@ -153,6 +153,8 @@ mtgKeyToArchetypeDict = {
     # Pauper
     "Gladecover Scout": "Bogles",
     "Tolarian Terror": "Terror"
+    #Modern
+
 }
 
 scryKeepCols = [
