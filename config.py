@@ -78,7 +78,8 @@ modernKeyCardList = [
 ]
 
 pauperKeyCardList = [
-    
+    "Gladecover Scout",
+    "Tolarian Terror"
 ]
 
 mtgKeyToArchetypeDict = {
@@ -149,6 +150,9 @@ mtgKeyToArchetypeDict = {
     "Terror of the Peaks": "Terror Combo",
     "Collected Company": "CoCo",
     "Monument to Endurance": "Discard",
+    # Pauper
+    "Gladecover Scout": "Bogles",
+    "Tolarian Terror": "Terror"
 }
 
 scryKeepCols = [
